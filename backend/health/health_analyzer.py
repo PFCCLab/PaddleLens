@@ -1,7 +1,7 @@
 import datetime
 import json
 
-from config import NOWDATE
+from utils.manage_data_update_time import get_now_date
 from health.fetcher.fetch_releases import fetch_total_releases
 from health.fetcher.fetch_dependents import fetch_dependents_from_html
 
@@ -23,12 +23,14 @@ class HealthAnalyzer:
         repo_list = [r["full_name"] for r in paddle_repos]
         if repo not in repo_list:
             raise ValueError("目前仅支持分析PaddlePaddle和PFCCLab组织下的仓库，请检查仓库名是否正确")
+        nowdate = get_now_date()
+        nowdate = datetime.datetime.fromisoformat(nowdate).replace(tzinfo=datetime.timezone.utc)
 
         self.owner = owner
         self.repo_name = name
         self.dir = f"{owner}_{name}"
         self.days = days
-        self.recent = NOWDATE - datetime.timedelta(days=days)
+        self.recent = nowdate - datetime.timedelta(days=days)
         self.scores = {
             "vigor": {
                 "communication activity": {
@@ -307,7 +309,7 @@ class HealthAnalyzer:
         self.scores["services"]["value"]["popularity"]["dependents"] = total_dependents_count
 
         return {
-            "date": NOWDATE.strftime("%Y-%m-%d"),
+            "date": get_now_date(),
             "scores": self.scores
         }
 

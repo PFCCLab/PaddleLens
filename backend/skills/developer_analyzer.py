@@ -9,8 +9,9 @@ from github import Github
 
 from skills import basic_info, experience, hardskill, softskill
 from utils import load_user_data
+from utils.manage_data_update_time import get_now_date
 from get_data.get_user_info import get_user_info
-from config import GITHUB_TOKEN, NOWDATE
+from config import GITHUB_TOKEN
 
 class DeveloperAnalyzer:
     """
@@ -94,13 +95,16 @@ class DeveloperAnalyzer:
         # 读取数据
         self.fetch_data()  # ---调试时注释掉，避免重复获取---
 
+        nowdate = get_now_date()
+        nowdate = datetime.fromisoformat(nowdate).replace(tzinfo=timezone.utc)
         basic_info_data = basic_info.basic_info(self.task_name)
-        experience_data, fig_repo_contrib, fig_recent_contrib = experience.experience(self.task_name, NOWDATE)
-        fig_lang, fig_domain_bytes, solving_score, fig_solving = hardskill.hardskill(self.task_name, NOWDATE)
+        experience_data, fig_repo_contrib, fig_recent_contrib = experience.experience(self.task_name, nowdate)
+        fig_lang, fig_domain_bytes, solving_score, fig_solving = hardskill.hardskill(self.task_name, nowdate)
         fig_consistency, fig_activeness, time_mgmt, comm_score, fig_comm, sample_commits = softskill.softskill(self.task_name)
 
         # 返回结果
         result = {
+            "date": nowdate.strftime("%Y-%m-%d"),
             "username": self.username,
             "basic_info": basic_info_data,
             "experience": {
@@ -125,12 +129,20 @@ class DeveloperAnalyzer:
         }
         return result
 
-    # def clean_up(self):
-    #     """
-    #     分析完成后删除临时目录。
-    #     """
-    #     import shutil
-    #     shutil.rmtree(self.user_cache_dir)
+    def clean_up(self):
+        """
+        分析完成后删除临时目录。
+        """
+        import shutil
+        if self.user_cache_dir.exists():
+            shutil.rmtree(self.user_cache_dir)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.clean_up()
+        # pass  # 调试时不删除临时目录
 
 if __name__ == "__main__":
 

@@ -1,6 +1,6 @@
 import json
 import os
-from config import  NOWDATE
+import datetime
 
 class GovernanceAnalyzer:
     """
@@ -8,7 +8,7 @@ class GovernanceAnalyzer:
     """
     def __init__(self, repo: str = "PaddlePaddle/Paddle"):
         self.repo = repo
-        self.date = NOWDATE.strftime("%Y-%m-%d")
+        self.date = datetime.datetime(1970, 1, 1).strftime("%Y-%m-%d") # 初始化为1970-01-01
         self.scores = {
             "usage": {
                 "installation_guide": 0,
@@ -57,6 +57,8 @@ class GovernanceAnalyzer:
 
         with open(latest_file, "r", encoding="utf-8") as f:
             data = json.load(f)
+        tmp = latest_file.split("/")[-1].replace(".json", "")
+        self.date = tmp[:4] + "-" + tmp[4:6] + "-" + tmp[6:8]
         self.scores = data
 
         results = {

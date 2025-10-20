@@ -1,17 +1,25 @@
 import time
 import json
+from turtle import update
+import comm
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 import logging
 import requests
 from github import Github
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from time import sleep
 
+from get_data.get_repo_prs import get_pr_comments_graphql, get_pr_files_graphql, get_pr_reviews_graphql, get_pr_commits_graphql
 from utils.request_github import request_github
+from config import GITHUB_TOKEN
 
 logger = logging.getLogger(__name__)
 GITHUB_GRAPHQL_ENDPOINT = "https://api.github.com/graphql"
 token_list = [
-    '',  # 添加github token
+    GITHUB_TOKEN,
 ]
 
 def fetch_issue_info(gh, repo_full_name, issue_num):
@@ -191,13 +199,6 @@ def get_repo_issues(repo_full_name):
     issue_num_list = [i + 1 for i in range(issue_num_now)]
     # 去除其中的pr
     pr_num_list = get_repo_prs_n(repo_full_name)
-    # owner, name = repo_full_name.split('/')
-    # try:
-    #     with open(f"data/paddle_prs_n/{owner}_{name}_prs_n.json", "r", encoding="utf-8") as f:
-    #         pr_num_list = json.load(f)
-    # except FileNotFoundError:
-    #     logging.error(f"PR numbers file not found for {owner}_{name}. Using empty list.")
-    #     return []
     issue_num_list = [num for num in issue_num_list if num not in pr_num_list]
     
     logger.info(f"Fetching issues for repository: {repo_full_name}, total: {len(issue_num_list)}")
@@ -214,23 +215,329 @@ def get_repo_issues(repo_full_name):
             issue_list.append(issue_info)
     return issue_list
 
+def get_issue_comments_graphql(token: str, repo_full_name: str, issue_num: int) -> list[list]:
+    """
+    使用graphql获取指定issue的评论信息
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    session = requests.Session()
+    retries = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("https://", adapter)
+
+    owner, name = repo_full_name.split('/')
+    query = """
+    query ($owner: String!, $name: String!, $issueNumber: Int!, $cursor: String) {
+        repository(owner: $owner, name: $name) {
+            issue(number: $issueNumber) {
+                comments(first: 100, after: $cursor) {
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                    nodes {
+                        author {
+                            login
+                        }
+                        createdAt
+                    }
+                }
+            }
+        }
+        rateLimit {
+            remaining
+            resetAt
+        }
+    }
+    """
+    variables = {
+        "owner": owner,
+        "name": name,
+        "issueNumber": issue_num,
+        "cursor": None
+    }
+    comments = []
+    has_next = True
+
+    while has_next:
+        try:
+            response = session.post(
+                GITHUB_GRAPHQL_ENDPOINT,
+                headers=headers,
+                json={"query": query, "variables": variables},
+                timeout=20
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            print(f"请求出错：{e}，等待后重试...")
+            sleep(2)
+            continue
+
+        # 检查 rateLimit 信息
+        rate_info = data.get("data", {}).get("rateLimit")
+        if rate_info:
+            remaining = rate_info.get("remaining", 0)
+            reset_at_str = rate_info.get("resetAt")
+            if remaining == 0 and reset_at_str:
+                reset_time = datetime.fromisoformat(reset_at_str.rstrip("Z")).replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                sleep_seconds = (reset_time - now).total_seconds() + 5  # 加 5 秒缓冲
+                sleep_seconds = max(sleep_seconds, 0)
+                print(f"Rate limit hit. 等待 {int(sleep_seconds)} 秒直到 {reset_time} 后重试...")
+                sleep(sleep_seconds)
+                continue
+
+        if "errors" in data:
+            print("GraphQL 错误:", data["errors"])
+            break
+
+        try:
+            issue_data = data.get("data", {}).get("repository", {}).get("issue")
+        except Exception as e:
+            issue_data = None
+        if issue_data is None:
+            print(f"Issue #{issue_num} 不存在或获取失败。")
+            break
+
+        comments_data = issue_data.get("comments")
+        if not comments_data:
+            break
+
+        nodes = comments_data.get("nodes") or []
+        for node in nodes:
+            author = node.get("author", {})
+            author_login = author.get("login") if author else None
+            created_at = node.get("createdAt")
+            if created_at:
+                comments.append([author_login, created_at])
+
+        page_info = comments_data.get("pageInfo") or {}
+        has_next = page_info.get("hasNextPage", False)
+        variables["cursor"] = page_info.get("endCursor")
+
+    return comments
+
+def update_repo_issues_graphql(token: str, repo_full_name: str, since: str, until: str) -> list[dict]:
+    """
+    使用 graphql 增量获取指定repo中的 Issue 和 PR
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    session = requests.Session()
+    retries = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("https://", adapter)
+
+    # owner, name = repo_full_name.split("/")
+    query = """
+    query ($queryString: String!, $cursor: String) {
+        search(query: $queryString, type: ISSUE, first: 100, after: $cursor) {
+            pageInfo {
+                hasNextPage
+                endCursor
+            }
+            nodes {
+                __typename
+                ... on Issue {
+                    number
+                    title
+                    body
+                    state
+                    author {
+                        login
+                    }
+                    timelineItems(last: 1, itemTypes: [CLOSED_EVENT]) {
+                        nodes {
+                            ... on ClosedEvent {
+                                actor {
+                                    login
+                                }
+                            }
+                        }
+                    }
+                    createdAt
+                    updatedAt
+                    closedAt
+                    labels(first: 10) {
+                        nodes {
+                            name
+                        }
+                    }
+                }
+                ... on PullRequest {
+                    number
+                    title
+                    body
+                    state
+                    merged
+                    author {
+                        login
+                    }
+                    mergedBy {
+                        login
+                    }
+                    createdAt
+                    updatedAt
+                    closedAt
+                    additions
+                    deletions
+                    changedFiles
+                }
+            }
+        }
+        rateLimit {
+            remaining
+            resetAt
+        }
+    }
+    """
+
+    query_string = f'repo:{repo_full_name} updated:{since}..{until}'
+    variables = {
+        "queryString": query_string,
+        "cursor": None
+    }
+
+    results = []
+    detail_tasks = []
+    has_next = True
+
+    pbar = tqdm(desc=f"Fetching issues&prs from {repo_full_name}", unit="issue", dynamic_ncols=True)
+
+    while has_next:
+        try:
+            response = session.post(
+                GITHUB_GRAPHQL_ENDPOINT,
+                headers=headers,
+                json={"query": query, "variables": variables},
+                timeout=20
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as e:
+            print(f"请求出错：{e}，等待后重试...")
+            sleep(2)
+            continue
+
+        if "errors" in data:
+            print("GraphQL 错误:", data["errors"])
+            break
+
+        search_data = data.get("data", {}).get("search", {})
+        page_info = search_data["pageInfo"]
+        nodes = search_data.get("nodes", [])
+
+        for item in nodes:
+            if item["__typename"] == "Issue":
+                closed_by = item["timelineItems"]["nodes"][0]["actor"]["login"] if item["timelineItems"]["nodes"] else None
+                item_info = {
+                    "repo": repo_full_name,
+                    "type": item["__typename"],  # Issue
+                    "number": item["number"],
+                    "title": item["title"],
+                    "body": item["body"],
+                    "state": item["state"],
+                    "user": item["author"]["login"] if item["author"] else None,
+                    "closed_by": closed_by,
+                    "created_at": item["createdAt"],
+                    "updated_at": item["updatedAt"],
+                    "closed_at": item.get("closedAt", None),
+                    "labels": [label["name"] for label in item["labels"]["nodes"]],
+                }
+
+            elif item["__typename"] == "PullRequest":
+                item_info = {
+                    "repo": repo_full_name,
+                    "type": item["__typename"],  # PullRequest
+                    "number": item["number"],
+                    "title": item["title"],
+                    "body": item["body"],
+                    "state": item["state"],
+                    "merged": item.get("merged", False),
+                    "user": item["author"]["login"] if item["author"] else None,
+                    "merged_by": item["mergedBy"]["login"] if item.get("mergedBy") else None,
+                    "created_at": item["createdAt"],
+                    "updated_at": item["updatedAt"],
+                    "closed_at": item.get("closedAt", None),
+                    "additions": item.get("additions", 0),
+                    "deletions": item.get("deletions", 0),
+                    "changed_files": item.get("changedFiles", 0),
+                }
+            else:
+                continue
+            detail_tasks.append((item["__typename"], item["number"], item_info)) # 加入任务池，后续并发采集comments等信息
+            results.append(item_info)
+            pbar.update(1)
+
+        has_next = page_info["hasNextPage"]
+        variables["cursor"] = page_info["endCursor"]
+
+    pbar.close()
+
+    # 并发补足详情信息（comment、commits、reviews、files）
+    def enrich_details(typename: str, number: int, item_dict: dict):
+        if typename == "Issue":
+            item_dict["comment_by"] = get_issue_comments_graphql(token, repo_full_name, number)
+        elif typename == "PullRequest":
+            item_dict["commits"] = get_pr_commits_graphql(token, repo_full_name, number)
+            item_dict["files"] = get_pr_files_graphql(token, repo_full_name, number)
+            item_dict["comment_by"] = get_pr_comments_graphql(token, repo_full_name, number)
+            item_dict["review_by"] = get_pr_reviews_graphql(token, repo_full_name, number)
+
+    with ThreadPoolExecutor(max_workers=9) as executor:
+        futures = [
+            executor.submit(enrich_details, typename, number, base_info)
+            for typename, number, base_info in detail_tasks
+        ]
+        for future in tqdm(as_completed(futures), total=len(futures), dynamic_ncols=True):
+            try:
+                future.result()
+            except Exception as e:
+                typename, number, base_info = detail_tasks[futures.index(future)]
+                print("Fetching item details failed:", e, f"Type: {typename}, Number: {number}")
+    return results
+
 if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
         level=logging.INFO,
     )
     
-    # 获取所有仓库的issue
-    with open("data/paddle_repos.json", "r", encoding="utf-8") as f:
-        repos = json.load(f)
-    # issue_list = []
-    for repo in repos:
-        # 获取每个仓库的issue信息
-        issues = get_repo_issues(repo['full_name'])
-        # if issues:
-        #     issue_list.extend(issues)
-        repo_owner, repo_name = repo['full_name'].split('/')
-        with open(f"data/paddle_issues/{repo_owner}_{repo_name}_issues.json", "w", newline="", encoding="utf-8") as f:
-            json.dump(issues, f, indent=4, ensure_ascii=False)
-    # with open("data/paddle_issues.json", "w", newline="", encoding="utf-8") as f:
-    #     json.dump(issue_list, f, indent=4, ensure_ascii=False)
+    # # 获取所有仓库的issue
+    # with open("data/paddle_repos.json", "r", encoding="utf-8") as f:
+    #     repos = json.load(f)
+    # # issue_list = []
+    # for repo in repos:
+    #     # 获取每个仓库的issue信息
+    #     issues = get_repo_issues(repo['full_name'])
+    #     # if issues:
+    #     #     issue_list.extend(issues)
+    #     repo_owner, repo_name = repo['full_name'].split('/')
+    #     with open(f"data/paddle_issues/{repo_owner}_{repo_name}_issues.json", "w", newline="", encoding="utf-8") as f:
+    #         json.dump(issues, f, indent=4, ensure_ascii=False)
+    # # with open("data/paddle_issues.json", "w", newline="", encoding="utf-8") as f:
+    # #     json.dump(issue_list, f, indent=4, ensure_ascii=False)
+
+    # 更新指定repo的issue(包含pr)
+    res = update_repo_issues_graphql(token_list[0], "PaddlePaddle/PaddleOCR", "2025-10-01", "2025-10-15")
+    with open("cache/test_issues.json", "w", newline="", encoding="utf-8") as f:
+        json.dump(res, f, indent=4, ensure_ascii=False)
+
+    # # 获取指定issue的comments
+    # res = get_issue_comments_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 1)
+    # with open("cache/test_issue_comments.json", "w", newline="", encoding="utf-8") as f:
+    #     json.dump(res, f, indent=4, ensure_ascii=False)

@@ -202,7 +202,7 @@ def time_management(task_name: str) -> dict:
         commits = json.load(f)
 
     # 获取每个月的活跃项目
-    month_projects = {}
+    month_projects = {} # (year, month) -> set of projects
     for c in commits:
         repo = c['repo']
         commit_date = datetime.fromisoformat(c['created_at'].replace('Z', '+00:00'))
@@ -219,11 +219,11 @@ def time_management(task_name: str) -> dict:
             "commit_count": 0
         }
     # 填补缺失的月份
-    start_year, start_month = next(iter(month_projects.keys()))
-    end_year, end_month = next(iter(reversed(month_projects.keys())))
-    total_months = (end_year * 12 + end_month) - (start_year * 12 + start_month) + 1
+    start_year, start_month = next(iter(month_projects.keys())) # 起始年月
+    end_year, end_month = next(iter(reversed(month_projects.keys()))) # 结束年月
+    total_months = (end_year * 12 + end_month) - (start_year * 12 + start_month) + 1 # 总月份数
     for i in range(total_months):
-        year = start_year + (start_month + i - 1) // 12
+        year = start_year + (start_month + i - 1) // 12 # 
         month = (start_month + i - 1) % 12 + 1
         if (year, month) not in month_projects:
             month_projects[(year, month)] = set()
@@ -235,7 +235,7 @@ def time_management(task_name: str) -> dict:
     active_projects = []
     max_active = (0, set())  # (月份索引, 活跃项目集合)
     if len(month_projects) < window_size:
-        # 如果项目数少于窗口大小，则直接使用所有项目的并集
+        # 如果活跃月份数少于窗口大小，则直接使用所有项目的并集
         active_projects = set.union(*month_projects_lst)
         max_active = (0, active_projects)
     else:
@@ -251,7 +251,7 @@ def time_management(task_name: str) -> dict:
                 max_active = (i - window_size + 1, current_active)
     # 将索引转换为实际的年月
     max_active_month_start = list(month_projects.keys())[max_active[0]]
-    max_active_month_end = list(month_projects.keys())[max_active[0] + window_size - 1]
+    max_active_month_end = list(month_projects.keys())[max_active[0] + min(window_size - 1, len(month_projects) - 1)]
     # 获取这些项目中的commit
     commit_active = [c for c in commits if c['repo'] in max_active[1]]
 

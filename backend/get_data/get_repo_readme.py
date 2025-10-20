@@ -7,15 +7,16 @@ import requests
 from github import Github
 
 from utils.request_github import request_github
+from config import GITHUB_TOKEN
 
 logger = logging.getLogger(__name__)
 token_list = [
-    # '',  # 添加github token
+    GITHUB_TOKEN,
 ]
 
-def fetch_readme(gh, repo_full_name):
+def fetch_readme(gh: Github, repo_full_name: str) -> str:
     """
-    获取指定仓库的README内容
+    从GitHub爬取指定仓库的README内容
     """
     try:
         repo = request_github(gh, gh.get_repo, (repo_full_name,))
@@ -26,15 +27,15 @@ def fetch_readme(gh, repo_full_name):
         logger.error(f"Error fetching README for {repo_full_name}: {e}")
         return ""
 
-def get_repo_readme(repo_full_name):
+def get_repo_readme(repo_full_name: str) -> str:
     """
-    获取指定仓库的README文件内容
+    获取单个仓库的README文件内容
     """
     gh = Github(token_list[0])  # 使用第一个token
     result = fetch_readme(gh, repo_full_name)
     return result
 
-def get_readmes(repo_list):
+def get_readmes(repo_list: list[str]) -> dict[str, str]:
     """
     获取多个仓库的README内容，使用多线程
     repo_list: list of repo_full_name

@@ -10,7 +10,7 @@ from wordcloud import WordCloud
 from io import BytesIO
 
 from utils.extension_to_language import extension_to_language
-from utils.repo_util import project_weights, module_weights
+from utils.get_module_weights import module_weights
 
 def plot_lang_skills(lang_counts: dict) -> go.Figure:
     """
@@ -196,8 +196,6 @@ def problem_solving_skill(task_name: str) -> tuple[float, go.Figure]:
     用户的问题解决能力，考虑 1）项目难度 2）贡献重要度 3）贡献类型
     """
 
-    # 获取项目难度
-    p_w_dic = project_weights()
     # 获取项目模块及模块修改数
     m_w_dic = module_weights()
 
@@ -211,12 +209,12 @@ def problem_solving_skill(task_name: str) -> tuple[float, go.Figure]:
         if pr['repo'] not in pr_weights:
             pr_weights[pr['repo']] = {}
         # 1.项目难度
-        repo_full_name = pr['repo']
-        p_w = p_w_dic.get(repo_full_name, 0)
+        p_w = math.log10(int(pr['number']) + 1)/10 # 项目大小作为难度指标
         # 2.贡献重要度
         # 1）loc
         loc = math.log10(pr['additions'] + pr['deletions'] + 1)
         # 2）模块重要度
+        repo_full_name = pr['repo']
         modules = m_w_dic.get(repo_full_name, {})
         m_w = 0
         files = pr['files']

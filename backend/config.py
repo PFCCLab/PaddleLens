@@ -12,8 +12,3 @@ if not GITHUB_TOKEN:
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-NOWDATE = os.getenv("NOWDATE")
-if not NOWDATE:
-    NOWDATE = datetime.now().replace(tzinfo=timezone.utc)
-else:
-    NOWDATE = datetime.fromisoformat(NOWDATE).replace(tzinfo=timezone.utc)
