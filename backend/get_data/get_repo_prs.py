@@ -93,126 +93,6 @@ def fetch_pr_info(gh, repo_full_name, pr_num):
             'error': str(e)
         }
 
-def fetch_pr_info_graphql(token, repo_full_name, pr_num):
-    """
-    使用GitHub GraphQL获取指定pr的信息（替代 REST API）
-    """
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-    }
-
-    repo_owner, repo_name = repo_full_name.split('/')
-    query = """
-    query ($owner: String!, $name: String!, $prNumber: Int!, $cursor: String) {
-        repository(owner: $owner, name: $name) {
-            pullRequest(number: $prNumber) {
-                number
-                title
-                body
-                state
-                merged
-                createdAt
-                closedAt
-                additions
-                deletions
-                changedFiles
-                author {
-                    login
-                }
-                mergedBy {
-                    login
-                }
-                commits(first: 100, after: $commitsCursor) {
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                    }
-                    nodes {
-                        commit {
-                            oid
-                        }
-                    }
-                }
-                comments(first: 100, after: $commentsCursor) {
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                    }
-                    nodes {
-                        author {
-                            login
-                        }
-                    }
-                }
-                reviewThreads(first: 100, after: $reviewsCursor) {
-                    pageInfo {
-                        hasNextPage
-                        endCursor
-                    }
-                    nodes {
-                        comments(first: 100) {
-                            nodes {
-                                author {
-                                    login
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """
-
-    variables = {
-        "owner": repo_owner,
-        "name": repo_name,
-        "prNumber": pr_num,
-        "cursor": None  # 用于分页
-    }
-
-    response = requests.post(GITHUB_GRAPHQL_ENDPOINT, headers=headers, json={'query': query, 'variables': variables})
-    if response.status_code != 200:
-        return {"error": f"GraphQL query failed: {response.text}", "pr_number": pr_num}
-
-    data = response.json()
-    try:
-        pr = data['data']['repository']['pullRequest']
-        if pr is None:
-            return {"error": "Pr not found", "pr_number": pr_num}
-
-        pr_info = {
-            "repo": repo_full_name,
-            "number": pr['number'],
-            "title": pr['title'],
-            "body": pr['body'],
-            "state": pr['state'],
-            "merged": pr['merged'],
-            "user": pr['author']['login'] if pr['author'] else None,
-            "merged_by": pr['mergedBy']['login'] if pr['mergedBy'] else None,
-            "created_at": pr['createdAt'],
-            "closed_at": pr['closedAt'],
-            "additions": pr['additions'],
-            "deletions": pr['deletions'],
-            "changed_files": pr['changedFiles'],
-            "commits": [c['commit']['oid'] for c in pr['commits']['nodes']],
-            "comment_by": [c['author']['login'] for c in pr['comments']['nodes'] if c['author']],
-            "review_by": list({rc['author']['login']
-                               for rt in pr['reviewThreads']['nodes']
-                               for rc in rt['comments']['nodes']
-                               if rc['author']}),
-        }
-
-        return pr_info
-    except Exception as e:
-        logger.error(f"Error fetching PR {pr.number} for repository {pr.base.repo.full_name}: {e}")
-        return {
-            'repo': repo_full_name,
-            'number': pr.number,
-            'error': str(e)
-        }
-
 def get_repo_prs(repo_full_name):
     """
     获取指定仓库的所有PR
@@ -493,7 +373,7 @@ def get_pr_reviews_graphql(token: str, repo_full_name: str, pr_num: int) -> list
     query ($owner: String!, $name: String!, $prNumber: Int!, $cursor: String) {
         repository(owner: $owner, name: $name) {
             pullRequest(number: $prNumber) {
-                reviewThreads(first: 100, after: $cursor) {
+                reviews(first: 100, after: $cursor) {
                     pageInfo {
                         hasNextPage
                         endCursor
@@ -717,15 +597,15 @@ if __name__ == "__main__":
     # with open("cache/test_pr_comments.json", "w", newline="", encoding="utf-8") as f:
     #     json.dump(comments, f, indent=4, ensure_ascii=False)
 
-    # 获取指定pr的文件变更
-    files = get_pr_files_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 15154)
-    with open("cache/test_pr_files.json", "w", newline="", encoding="utf-8") as f:
-        json.dump(files, f, indent=4, ensure_ascii=False)
+    # # 获取指定pr的文件变更
+    # files = get_pr_files_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 15154)
+    # with open("cache/test_pr_files.json", "w", newline="", encoding="utf-8") as f:
+    #     json.dump(files, f, indent=4, ensure_ascii=False)
 
-    # # 获取指定pr的reviews
-    # reviews = get_pr_reviews_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 15154)
-    # with open("cache/test_pr_reviews.json", "w", newline="", encoding="utf-8") as f:
-    #     json.dump(reviews, f, indent=4, ensure_ascii=False)
+    # 获取指定pr的reviews
+    reviews = get_pr_reviews_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 15154)
+    with open("cache/test_pr_reviews.json", "w", newline="", encoding="utf-8") as f:
+        json.dump(reviews, f, indent=4, ensure_ascii=False)
 
     # # 获取指定pr的commit shas
     # commit_shas = get_pr_commits_graphql(token_list[0], "PaddlePaddle/PaddleOCR", 15154)

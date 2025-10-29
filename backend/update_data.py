@@ -2,8 +2,8 @@ import datetime
 import time
 import json
 import os
+import sys
 import math
-from turtle import up
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
@@ -153,8 +153,11 @@ def update_paddle_commits(since: str, until: str) -> None:
                 try:
                     commit["why_what_label"] = future.result()
                 except Exception as e:
-                    logger.error(f"Error processing commit {commit['sha']} in repository {full_name}: {e}")
+                    print(f"Error processing commit {commit['sha']} in repository {full_name}: {e}")
 
+        # 去重
+        existing_shas = {commit['sha'] for commit in existing_commits}
+        results = [commit for commit in results if commit['sha'] not in existing_shas]
         existing_commits.extend(results)
         with open(commits_file, "w", newline="", encoding="utf-8") as f:
             json.dump(existing_commits, f, indent=4, ensure_ascii=False)
@@ -195,24 +198,54 @@ def update_all():
     更新所有数据
     """
     since = get_now_date()
-    until = "2025-10-15"
+    until = "2025-10-24"
     # until = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    # ---更新paddle相关的repo信息---
-    update_paddle_repos(until)
+    # 一次最多处理一周的数据，避免触发rate limit
+    since_dt = datetime.datetime.fromisoformat(since)
+    until_dt = datetime.datetime.fromisoformat(until)
+    delta = until_dt - since_dt
+    for i in range(0, delta.days, 7):
+        batch_since_dt = since_dt + datetime.timedelta(days=i)
+        batch_until_dt = min(batch_since_dt + datetime.timedelta(days=7), until_dt)
+        batch_since = batch_since_dt.strftime("%Y-%m-%d")
+        batch_until = batch_until_dt.strftime("%Y-%m-%d")
+        print(f"Updating data from {batch_since} to {batch_until}...")
+        start_time = time.time()
+        try:
+            # ---更新paddle相关的repo信息---
+            update_paddle_repos(batch_until)
 
-    # ---更新paddle相关的issue和pr信息---
-    update_paddle_issues_prs(since, until)
+            # ---更新paddle相关的issue和pr信息---
+            update_paddle_issues_prs(batch_since, batch_until)
 
-    # ---更新paddle相关的commit信息---
-    update_paddle_commits(since, until)
+            # ---更新paddle相关的commit信息---
+            update_paddle_commits(batch_since, batch_until)
 
-    # ---更新paddle相关的模块重要度信息---
-    update_repos_modules_weights()
+            # ---更新paddle相关的模块重要度信息---
+            update_repos_modules_weights()
 
-    # 更新nowdate
-    update_now_date(until)
-    
+            # 更新nowdate
+            update_now_date(batch_until)
+
+        except Exception as e:
+            logging.error(f"Error updating data from {batch_since} to {batch_until}: {e}")
+            time.sleep(max(3700-(time.time() - start_time), 0)) # 避免触发rate limit
+
+    # # ---更新paddle相关的repo信息---
+    # update_paddle_repos(until)
+
+    # # ---更新paddle相关的issue和pr信息---
+    # update_paddle_issues_prs(since, until)
+
+    # # ---更新paddle相关的commit信息---
+    # update_paddle_commits(since, until)
+
+    # # ---更新paddle相关的模块重要度信息---
+    # update_repos_modules_weights()
+
+    # # 更新nowdate
+    # update_now_date(until)
 
 if __name__ == "__main__":
 

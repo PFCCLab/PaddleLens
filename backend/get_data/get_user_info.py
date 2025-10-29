@@ -21,7 +21,7 @@ def get_user_info(gh, username):
     dvpr = request_github(gh, gh.get_user, (username,))
     if not dvpr:
         logger.error(f"User {username} not found.")
-        return None
+        raise ValueError(f"Github 用户不存在，请重新输入")
     info = {
         "username": username,
         "name": dvpr.name or '',
