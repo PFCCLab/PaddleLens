@@ -9,6 +9,12 @@ from datetime import datetime
 from pathlib import Path
 import plotly.graph_objects as go
 
+logging.basicConfig(
+    format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
 def plot_consistency(repo_consistency: dict) -> go.Figure:
     """
     绘制责任心柱状图

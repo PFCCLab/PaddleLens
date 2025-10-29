@@ -13,6 +13,12 @@ from utils.manage_data_update_time import get_now_date
 from get_data.get_user_info import get_user_info
 from config import GITHUB_TOKEN
 
+logging.basicConfig(
+    format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
 class DeveloperAnalyzer:
     """
     分析开发者的技能。
@@ -35,7 +41,10 @@ class DeveloperAnalyzer:
         """
         gh = Github(GITHUB_TOKEN)
         # ---从github获取用户基本信息和仓库信息---
-        info = get_user_info(gh, self.username)
+        try:
+            info = get_user_info(gh, self.username)
+        except Exception:
+            raise ValueError(f"Github 用户不存在，请重新输入")
         with open(self.user_cache_dir / "info.json", 'w', encoding='utf-8') as f:
             json.dump(info, f, ensure_ascii=False, indent=4)
 
@@ -93,7 +102,10 @@ class DeveloperAnalyzer:
         分析技能，返回技能列表。
         """
         # 读取数据
-        self.fetch_data()  # ---调试时注释掉，避免重复获取---
+        try:
+            self.fetch_data()  # ---调试时注释掉，避免重复获取---
+        except ValueError as e:
+            raise e
 
         nowdate = get_now_date()
         nowdate = datetime.fromisoformat(nowdate).replace(tzinfo=timezone.utc)

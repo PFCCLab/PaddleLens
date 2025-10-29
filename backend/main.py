@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from skills.developer_analyzer import DeveloperAnalyzer
 from health.health_analyzer import HealthAnalyzer
-from collarboration.governance_analyzer import GovernanceAnalyzer
+from collaboration.governance_analyzer import GovernanceAnalyzer, GovernanceRuleAnalyzer
 
 def clean_data(obj):
     """
@@ -39,11 +39,15 @@ def clean_data(obj):
 
 app = FastAPI()
 
-# 允许跨域（可用于开发环境，生产环境需要限制）
+# 设置跨域中间件
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["*"],  # 允许所有来源
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://localhost:5173",
+        "http://paddle-lens.osslab-pku.org",
+        "https://paddle-lens.osslab-pku.org",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -67,23 +71,49 @@ def analyze_skills(request_data: UserAnalyzeRequest) -> dict:
     分析开发者技能，返回技能分析结果。
     """
     username = request_data.github_user
-    analyzer = DeveloperAnalyzer(username)
-    result = analyzer.analyze_skills()
-    result = clean_data(result)
-
-    return JSONResponse(content=result)
+    try:
+        with DeveloperAnalyzer(username) as analyzer:
+            result = analyzer.analyze_skills()
+            result = clean_data(result)
+            return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"服务器内部错误：{str(e)}")
 
 # 项目群体协同-治理度分析
 @app.get("/governance/")
-def governance_analysis() -> dict:
+def governance_rule_analysis() -> dict:
+    """
+    展示项目治理框架
+    """
+    try:
+        analyzer = GovernanceRuleAnalyzer()
+        result = analyzer.analyze_governance_rules()
+        result = clean_data(result)
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"服务器内部错误：{str(e)}")
+    
+class GovernanceAnalyzeRequest(BaseModel):
+    github_repo: str
+@app.post("/governance/")
+def governance_analysis(request_data: GovernanceAnalyzeRequest) -> dict:
     """
     展示项目治理度，返回治理度分析结果。
     """
-    analyzer = GovernanceAnalyzer()
-    result = analyzer.analyze_governance()
-    result = clean_data(result)
-
-    return JSONResponse(content=result)
+    reponame = request_data.github_repo
+    try:
+        analyzer = GovernanceAnalyzer(reponame)
+        result = analyzer.analyze_governance()
+        result = clean_data(result)
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"服务器内部错误：{str(e)}")
 
 # 健康度分析
 class RepoAnalyzeRequest(BaseModel):

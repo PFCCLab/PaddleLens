@@ -4,8 +4,6 @@ import logging
 
 from utils.manage_data_update_time import get_now_date
 
-nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
-
 def user_commits_in_repo(username, repo_full_name):
     """
     获取指定用户在指定仓库的commit信息
@@ -21,6 +19,7 @@ def user_commits_in_repo(username, repo_full_name):
         logger.error(f"Error fetching commits for {repo_full_name}: {e}")
         return commit_list
     
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for commit in commits:
         try:
             commit_time = datetime.fromisoformat(commit['created_at'])
@@ -45,6 +44,8 @@ def user_prs_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching prs for {repo_full_name}: {e}")
         return pr_list
+    
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for pr in prs:
         try:
             pr_time = datetime.fromisoformat(pr['created_at'])
@@ -69,6 +70,8 @@ def user_issues_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching issues for {repo_full_name}: {e}")
         return issue_list
+    
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for issue in issues:
         if 'error' in issue: # 可能会有deleted issue
             continue
@@ -116,6 +119,8 @@ def user_review_prs_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching prs for {repo_full_name}: {e}")
         return review_pr_list
+
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for pr in prs:
         try:
             pr_time = datetime.fromisoformat(pr['created_at'])
@@ -138,6 +143,7 @@ def user_comment_prs_issues_in_repo(username, repo_full_name):
     # logger.info(f"Fetching comments for {username} in repository {repo_full_name}")
     repo_owner, repo_name = repo_full_name.split('/')
 
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     comment_prs_issues_list = []
     # pr评论
     try:

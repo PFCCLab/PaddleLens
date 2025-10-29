@@ -257,6 +257,7 @@ class HealthAnalyzer:
         self.scores["organization"]["size"]["number of contributors"]["recent"] = len(recent_contributors)
         #    b)number of core contributors
         core_contributors = set(commit["committer"] for commit in commits)
+        core_contributors.discard("web-flow")
         core_contributors.discard("GitHub")
         self.scores["organization"]["size"]["number of core contributors"] = len(core_contributors)
 

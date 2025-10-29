@@ -5,6 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 import logging
 
+logging.basicConfig(
+    format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
 def plot_repo_contrib(df_repo_contrib: pd.DataFrame) -> go.Figure:
     """
     绘制贡献总数前5个仓库的统计图

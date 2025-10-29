@@ -12,6 +12,12 @@ from io import BytesIO
 from utils.extension_to_language import extension_to_language
 from utils.get_module_weights import module_weights
 
+logging.basicConfig(
+    format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
 def plot_lang_skills(lang_counts: dict) -> go.Figure:
     """
     绘制编程语言使用能力的条形图

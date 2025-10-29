@@ -2,6 +2,12 @@ import json
 from pathlib import Path
 import logging
 
+logging.basicConfig(
+    format="%(asctime)s (PID %(process)d) [%(levelname)s] %(filename)s:%(lineno)d %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
 def basic_info(task_name: str) -> dict:
     """
     获取指定用户的基本信息，包括姓名、邮箱、创建时间、仓库等
