@@ -1,8 +1,10 @@
 import numpy as np
 import uuid
 import datetime
+from datetime import date
 import pandas as pd
 import base64
+from typing import Optional
 import plotly.graph_objects as go
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from skills.developer_analyzer import DeveloperAnalyzer
 from health.health_analyzer import HealthAnalyzer
-from collaboration.governance_analyzer import GovernanceAnalyzer, GovernanceRuleAnalyzer
+from collaboration.governance_analyzer import GovernanceAnalyzer
 
 def clean_data(obj):
     """
@@ -82,31 +84,18 @@ def analyze_skills(request_data: UserAnalyzeRequest) -> dict:
         raise HTTPException(status_code=500, detail=f"服务器内部错误：{str(e)}")
 
 # 项目群体协同-治理度分析
-@app.get("/governance/")
-def governance_rule_analysis() -> dict:
-    """
-    展示项目治理框架
-    """
-    try:
-        analyzer = GovernanceRuleAnalyzer()
-        result = analyzer.analyze_governance_rules()
-        result = clean_data(result)
-        return JSONResponse(content=result)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"服务器内部错误：{str(e)}")
-    
+
 class GovernanceAnalyzeRequest(BaseModel):
-    github_repo: str
+    input_date: Optional[date] = None
+
 @app.post("/governance/")
 def governance_analysis(request_data: GovernanceAnalyzeRequest) -> dict:
     """
     展示项目治理度，返回治理度分析结果。
     """
-    reponame = request_data.github_repo
+    input_date = request_data.input_date
     try:
-        analyzer = GovernanceAnalyzer(reponame)
+        analyzer = GovernanceAnalyzer(input_date=input_date)
         result = analyzer.analyze_governance()
         result = clean_data(result)
         return JSONResponse(content=result)
