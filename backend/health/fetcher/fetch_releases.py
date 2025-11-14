@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from config import NOWDATE, GITHUB_TOKEN
+from utils.manage_data_update_time import get_now_date
+from config import GITHUB_TOKEN
 
 import requests
 
@@ -26,13 +27,13 @@ def fetch_total_releases(owner, repo, days=None):
         all_releases.extend(data)
         params["page"] += 1
 
-    all_releases = [release for release in all_releases if datetime.fromisoformat(release["created_at"].replace("Z", "+00:00")) <= NOWDATE]
+    all_releases = [release for release in all_releases if datetime.fromisoformat(release["created_at"].replace("Z", "+00:00")) <= datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)]
     total_count = len(all_releases)
 
     recent_count = 0
 
     if days:
-        since_date = NOWDATE - timedelta(days=days)
+        since_date = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc) - timedelta(days=days)
         for release in all_releases:
             created = datetime.fromisoformat(
                 release["created_at"].replace("Z", "+00:00")

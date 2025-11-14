@@ -2,24 +2,19 @@
   <div class="p-3">
     <div v-for="(value, key) in data" :key="key" class="list-group-item m-1">
       <!-- 渲染每一个指标 -->
-      <div v-if="key !== 'average'" class="d-flex justify-content-between align-items-center p-3 border-0 rounded" style="background-color: #F0F3F5;">
+      <div v-if="key !== '_selected'" class="d-flex justify-content-between align-items-center p-3 border-0 rounded" style="background-color: #F0F3F5;">
         <div>
           <!-- 折叠按钮，仅当是对象时显示 -->
           <button v-if="isObject(value)" class="btn btn-sm btn-link p-0 me-2" @click="toggleCollapse(key)">
             <span>{{ ensureCollapse(key) ? '▼' : '▶' }}</span>
           </button>
           <!-- 名称和描述 -->
-          <strong>{{ nameMap[key] || key }}</strong>
+          <strong>{{ key }}</strong>
           <small class="text-muted ms-2">{{ descMap[key] || '' }}</small>
         </div>
         <!-- 得分 -->
-        <span v-if="isObject(value) && value?.average !== undefined"
-              :class="['badge', 'rounded-pill', scoreColor(value.average)]">
-          {{ value.average }}
-        </span>
-        <span v-if="!isObject(value)"
-              :class="['badge', 'rounded-pill', scoreColor(value)]">
-          {{ value }}
+        <span v-if="getSelected(value) === 1" :class="['badge', 'rounded-pill']">
+          ✔
         </span>
       </div>
 
@@ -41,98 +36,72 @@ const props = defineProps({
   }
 })
 
-// 中文标题映射
-const nameMap = {
-  usage: '项目使用',
-  installation_guide: '安装指南',
-  usage_guide: '使用指南',
-  security_policy: '安全策略',
-  license: '许可证',
-  
-  contribution: '社区贡献',
-  contribution_guidelines: '贡献指引与准备',
-  contribution_types: '贡献类型',
-  cla: '贡献者许可协议（CLA）',
-  communication_way: '沟通方式',
-  mentorship: '导师机制',
-  local_environment_setup: '本地环境构建',
 
-  contribution_submission: '贡献撰写与提交',
-    writing_standards: '贡献编写规范',
-  // completeness: '结构完整性',
-  // quality: '内容质量',
-  // style: '格式规范',
-  submission_standards: '提交规范',
-  // size: '粒度',
-  // description: '描述',
-  code_of_conduct: '行为准则（CoC）',
-
-  contribution_acceptance: '贡献接收',
-  review_standards: '评审标准',
-  review_process: '评审流程',
-  ci_description: 'CI说明',
-
-  organization: '项目组织与维护',
-  role_management: '角色管理',
-  role_definition: '角色定义',
-  role_assignment_process: '分配流程',
-  role_assignment_standards: '职责说明',
-  release_management: '版本管理',
-  // release_plan: '版本发布计划',
-  // release_steps: '版本发布步骤',
-  // release_notes: '版本发布说明'
-}
 // 中文描述映射
 const descMap = {
-  usage: '项目安装和使用的步骤与要求，保障用户在了解规则与条件的前提下顺利运行系统。',
-  installation_guide: '项目安装步骤',
-  usage_guide: '项目使用步骤',
-  security_policy: '项目安全问题的定义、汇报流程以及安全使用建议',
-  license: '项目的开源许可协议',
-  
-  contribution: '项目贡献的流程与规范，保障贡献者在了解规则与条件的前提下顺利参与项目开发。',
-  contribution_guidelines: '贡献机会、贡献方式和贡献支持',
-  contribution_types: '可选择的贡献类型',
-  cla: '在贡献前需要签署的许可协议',
-  communication_way: '交流渠道与反馈机制',
-  mentorship: '项目为贡献者提供的人员指导和支持',
-  local_environment_setup: '涉及对操作系统、依赖工具、编译器等开发运行时环境的引导。',
-  
-  contribution_submission: '贡献撰写与提交的步骤与规范',
-  writing_standards: '贡献内容在内容完整性、质量和格式上的标准',
-  // completeness: '结构完整性',
-  // quality: '内容质量',
-  // style: '格式规范',
-  submission_standards: '提交项（PR）的粒度和描述规范',
-  code_of_conduct: '社区协作需要满足的行为准则',
-  // size: '粒度',
-  // description: '描述',
+  // 职位规则
+  职位规则: '项目中的权限划分和职责分工，明确各类参与者的角色与权限，保障治理的清晰与高效。',
+  权限划分: '明确不同参与者在项目中的权限等级与任务职责范围。',
+  问题分类者: '负责初步分类问题与任务，确保问题分发流程顺畅。',
+  审核者: '有权限审核和把关贡献的角色，保障项目质量与规范。',
+  提交者: '具备代码提交权限的核心角色，负责编码质量与一致性。',
+  模块划分: '对项目模块进行责任划分，确保模块维护清晰。',
+  代码所有者: '对特定代码模块负责的人员，拥有修改与审核权限。',
+  模块维护者: '负责指定模块的维护与演进，提升代码质量。',
+  项目维护者: '负责项目总体技术方向与管理任务，统筹开发流程。',
 
-  contribution_acceptance: '贡献接收步骤与规范',
-  review_standards: '对贡献进行评审时需要考虑的内容',
-  review_process: '代码评审的步骤',
-  ci_description: 'CI检查项、执行环境与失败解决方案',
+  // 边界规则
+  边界规则: '角色的资格判定与任命方式，确保社区人员选拔公正高效。',
+  角色资质评估: '评估社区参与者能否担任关键角色的标准与条件。',
+  参与历史: '参考社区参与者以往的活跃程度与参与质量。',
+  价值观契合度: '考察参与者在价值观及行为规范上的一致性。',
+  提名: '通过推荐机制选出候选角色人员。',
+  角色任命流程: '从评估到正式赋予角色的操作流程与审核机制。',
 
-  organization: '项目的治理结构设计与发布流程安排，保障社区运行的稳定性、透明度与长期演进。',
-  role_management: '社区各类角色的设置与管理',
-  role_definition: '社区中各类角色的定义与职责描述',
-  role_assignment_process: '角色分配的流程与规范',
-  role_assignment_standards: '角色分配的标准与准则',
-  release_management: '项目版本发布的计划、步骤与版本发布说明',
-  // release_plan: '版本发布计划',
-  // release_steps: '版本发布',
-  // release_notes: '版本发布说明'
+  // 选择规则
+  选择规则: '为参与者提供入门支持与开发引导，帮助其顺利参与治理与开发。',
+  入职支持: '为新加入者提供必要资料与任务引导，减少上手门槛。',
+  教程: '帮助新手理解项目结构与操作方式的指导文档。',
+  任务推荐: '指导贡献者挑选适合的任务快速上手。',
+  指导支持: '项目为贡献者提供的人员引导和协作帮助。',
+  开发指南: '参与开发所需遵循的一系列技术规范与设备配置说明。',
+  软硬件要求: '项目运行和开发所需的基本设施配置说明。',
+  开发环境设置指南: '如何搭建本地开发环境以启动项目。',
+  变更提交指南: '如何撰写、整理和提交代码或文档的流程规范。',
+  CI描述: '持续集成工具的使用说明，包括运行环境及异常处理。',
+  开发工具指南: '推荐使用的开发工具及配置建议。',
+  贡献者许可协议: '贡献者在提交代码前需确认的法律协议（如 CLA）。',
+
+  // 范围规则
+  范围规则: '对项目贡献标准、问题模板和 PR 提交要求的详细定义。',
+  问题模板: '社区中用于报告问题（issue）的标准化模板。',
+  贡献规范: '规范贡献内容的质量与格式，确保规范协调。',
+  代码价值观: '项目倡导的代码质量与协作准则。',
+  代码风格规范: '代码编辑时需遵循的格式与风格要求。',
+  文档风格规范: '文档撰写所需的语言风格与结构指南。',
+  测试规范: '撰写测试用例与执行测试的推荐方式。',
+  PR标准: '对 Pull Request 的格式、规模和提交模板的要求。',
+  PR大小要求: '对 PR 提交大小（行数/文件）的控制建议。',
+  PR模板: '统一 PR 描述格式，用于审核与记录。',
+
+  // 聚合规则
+  聚合规则: '项目设计与补丁的提交评审流程，便于社区集中意见并推动实现。',
+  设计提案流程: '对功能提案的提交、讨论与采纳流程的定义。',
+  补丁评审流程: '用于审核和合并补丁（patch）的评审规则和流程。',
+
+  // 信息规则
+  信息规则: '信息流转机制的定义，确保沟通顺畅且信息传递及时。',
+  沟通渠道: '提供官方沟通路径，如邮件、群组、chat 等。',
+  通知机制: '变更或公告等信息如何通知贡献者。',
+
+  // 奖惩规则
+  奖惩规则: '对积极贡献行为的激励机制，以及对不当行为的规范与惩戒标准。',
+  激励机制: '通过荣誉、物质或身份等手段激励优秀贡献者。',
+  行为准则: '参与社区必须遵守的行为规范与合作守则。'
 }
 
 // 判断是否为对象（非叶子节点）
 const isObject = (val) => typeof val === 'object' && val !== null
-
-// 根据评分返回不同颜色
-const scoreColor = (score) => {
-  if (score < 2.0) return 'bg-danger text-white'
-  if (score < 4.0) return 'bg-warning text-white'
-  return 'bg-success text-white'
-}
 
 // 控制折叠状态（按 key 存储）
 const collapsedKeys = ref({})
@@ -146,6 +115,13 @@ const ensureCollapse = (key) => {
 // 折叠/展开切换
 const toggleCollapse = (key) => {
   collapsedKeys.value[key] = !collapsedKeys.value[key]
+}
+
+const getSelected = (val) => {
+  if (typeof val === 'number') {
+    return val
+  }
+  return val?._selected || 0
 }
 
 </script>

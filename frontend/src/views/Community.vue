@@ -367,7 +367,8 @@ const analyzeHealth = async () => {
   result.value = null
   loading.value = true
   try {
-    const res = await axios.post('http://localhost:8000/health/', {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, ''); // 去掉末尾/
+    const res = await axios.post(`${API_BASE}/health/`, {
       github_repo: repo.value
     })
     date.value = res.data.date

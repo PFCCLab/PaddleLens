@@ -4,7 +4,7 @@ import json
 from tqdm import tqdm
 from openai import OpenAI
 import logging
-from config import OPENAI_BASE_URL, OPENAI_API_KEY
+from config import OPENAI_BASE_URL, OPENAI_API_KEY, MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def get_domain(description: str, readme: str) -> str:
     """
     readme_content = clean_markdown(readme) if readme else ""
     response = client.chat.completions.create(
-        model="deepseek-v3",
+        model=MODEL,
         messages=[
             {
                 "role": "system",
@@ -74,7 +74,7 @@ def get_pr_type(pr_title: str, pr_body: str) -> str:
     pr_body_cleaned = clean_markdown(pr_body) if pr_body else ""
     pr_body_cleaned = pr_body_cleaned[:2000]  # 截断，防止过长
     response = client.chat.completions.create(
-        model="deepseek-v3",
+        model=MODEL,
         messages=[
             {
                 "role": "system",
@@ -112,7 +112,7 @@ def get_commit_type(commit_message: str) -> int:
     commit_message_cleaned = clean_markdown(commit_message) if commit_message else ""
     commit_message_cleaned = commit_message_cleaned[:1000]  # 截断，防止过长
     response = client.chat.completions.create(
-        model="deepseek-v3",
+        model=MODEL,
         messages=[
             {
                 "role": "system",

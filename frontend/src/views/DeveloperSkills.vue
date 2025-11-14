@@ -31,6 +31,8 @@
     <div v-if="result">
       <h3 class="text-center border-top mb-3 py-3 my-3">{{ result.username }}的能力度量结果</h3>
 
+      <p class="text-secondary text-center">数据最后更新：{{ result.date }}</p>
+
       <!-- 基本信息 -->
       <h5 class="text-center bg-light mb-3 py-3 my-3">基本信息</h5>
       <div class="row mb-3">
@@ -233,6 +235,7 @@ import Plotly from 'plotly.js-dist-min'
 //创建响应式数据
 // 变量
 const githubUser = ref('')
+const date = ref('')
 const result = ref(null)
 const loading = ref(false)
 // 引用 DOM 容器
@@ -254,10 +257,13 @@ async function analyzeSkills() {
   loading.value = true
 
   try {
-    const res = await axios.post('http://localhost:8000/dvpr_skills/', {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, ''); // 去掉末尾/
+    const res = await axios.post(`${API_BASE}/dvpr_skills/`, {
       github_user: githubUser.value
     })
     result.value = res.data
+    date.value = result.value.date
+
 
     // 解构数据
     const r = result.value
@@ -295,8 +301,15 @@ async function analyzeSkills() {
     Plotly.newPlot(plot_fig_comm.value, plot_fig_comm_Data, plot_fig_comm_Layout)
 
   } catch (err) {
-    console.error(err)
-    alert('分析失败，请检查服务器或用户名')
+    if (err.response && err.response.data && err.response.data.detail) {
+      alert('分析失败：' + err.response.data.detail)
+    } else if (axios.isCancel(err)) {
+      alert('请求被取消')
+    } else if (err.message.includes('timeout')) {
+      alert('请求超时，请稍后再试')
+    } else {
+      alert('分析失败，请稍后重试')
+    }
   } finally {
     loading.value = false
   }

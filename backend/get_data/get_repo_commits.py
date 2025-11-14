@@ -1,18 +1,27 @@
+from math import log
 import time
-# import requests
+import os
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from time import sleep
+from datetime import datetime, timezone
 import json
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import subprocess
 import logging
 from typing import *
-from github import Github
+from github import Github, GithubException
 
 from utils.request_github import request_github
+from config import GITHUB_TOKEN
+
+GITHUB_GRAPHQL_ENDPOINT = "https://api.github.com/graphql"
 
 logger = logging.getLogger(__name__)
 token_list = [
-    # '',  # 添加github token
+    GITHUB_TOKEN,
 ]
 
 def load_commit_objects(file_path):
@@ -104,46 +113,46 @@ def parse_commit_logs2(file_path):
                         })
     return commit_data
 
-def get_login_for_commit(gh, repo_full_name, sha):
-    """
-    获取指定commit的作者和提交者的login
-    """
-    try:
-        repo = gh.get_repo(repo_full_name)
-        commit = repo.get_commit(sha)
-        return {
-            "sha": sha,
-            "author": commit.author.login if commit.author else None,
-            "committer": commit.committer.login if commit.committer else None
-        }
-    except Exception as e:
-        return {"sha": sha, "error": str(e)}
+# def get_login_for_commit(gh, repo_full_name, sha):
+#     """
+#     获取指定commit的作者和提交者的login
+#     """
+#     try:
+#         repo = gh.get_repo(repo_full_name)
+#         commit = repo.get_commit(sha)
+#         return {
+#             "sha": sha,
+#             "author": commit.author.login if commit.author else None,
+#             "committer": commit.committer.login if commit.committer else None
+#         }
+#     except Exception as e:
+#         return {"sha": sha, "error": str(e)}
 
-def update_logins(repo_full_name, commit_list):
-    """
-    用pygithub获取commit的author和committer的login，替换当前可能不准确的author和committer
-    """
-    gh_list = [Github(token) for token in token_list]
-    updated_list = []
-    sha_to_commit = {commit["sha"]: commit for commit in commit_list}
+# def update_logins(repo_full_name, commit_list):
+#     """
+#     用pygithub获取commit的author和committer的login，替换当前可能不准确的author和committer
+#     """
+#     gh_list = [Github(token) for token in token_list]
+#     updated_list = []
+#     sha_to_commit = {commit["sha"]: commit for commit in commit_list}
 
-    tasks = []
-    with ThreadPoolExecutor(max_workers=3 * len(gh_list)) as executor:
-        for i, sha in enumerate(sha_to_commit):
-            tasks.append(executor.submit(get_login_for_commit, gh_list[i % len(gh_list)], repo_full_name, sha))
+#     tasks = []
+#     with ThreadPoolExecutor(max_workers=3 * len(gh_list)) as executor:
+#         for i, sha in enumerate(sha_to_commit):
+#             tasks.append(executor.submit(get_login_for_commit, gh_list[i % len(gh_list)], repo_full_name, sha))
 
-        for future in tqdm(as_completed(tasks), total=len(tasks), desc=f"Fetching logins for {repo_full_name}"):
-            result = future.result()
-            sha = result["sha"]
-            commit = sha_to_commit[sha]
-            if "error" in result:
-                logger.warning(f"Login fetch failed for {sha}: {result['error']}")
-            else:
-                commit["author"] = result["author"]
-                commit["committer"] = result["committer"]
-            updated_list.append(commit)
+#         for future in tqdm(as_completed(tasks), total=len(tasks), desc=f"Fetching logins for {repo_full_name}"):
+#             result = future.result()
+#             sha = result["sha"]
+#             commit = sha_to_commit[sha]
+#             if "error" in result:
+#                 logger.warning(f"Login fetch failed for {sha}: {result['error']}")
+#             else:
+#                 commit["author"] = result["author"]
+#                 commit["committer"] = result["committer"]
+#             updated_list.append(commit)
 
-    return updated_list
+#     return updated_list
 
 def get_repo_commits(repo_full_name):
     """ 
@@ -167,7 +176,7 @@ def get_repo_commits(repo_full_name):
 
     # 获取commit日志
     cd $CLONE_PATH
-    git log --pretty=format:'{{"repo": "{repo_full_name}", "sha": "%H", "created_at": "%ad", "author": "%an", "committer": "%cn", "message": "%f"}},' --date=iso | sed "$ s/,$//" > ../${{FILE_NAME}}_commits.json
+    git log --pretty=format:'{{"repo": "{repo_full_name}", "sha": "%H", "created_at": "%ad", "author": "%an", "author_email": "%ae", "committer": "%cn", "message": "%f"}},' --date=iso | sed "$ s/,$//" > ../${{FILE_NAME}}_commits.json
     git log --name-status --pretty=format:'STARTOFTHECOMMIT: %H'> ../${{FILE_NAME}}_commits1.log
     git log --numstat --pretty=format:'STARTOFTHECOMMIT: %H'> ../${{FILE_NAME}}_commits2.log
 
@@ -205,7 +214,7 @@ def get_repo_commits(repo_full_name):
         commit_list.append(commit)
     
     # 用pygithub获取commit的author和committer的login，替换当前可能不准确的author和committer
-    commit_list = update_logins(repo_full_name, commit_list)
+    # commit_list = update_logins(repo_full_name, commit_list)
 
     # 删除tmp_repo目录
     subprocess.run(f"rm -rf tmp_repo", shell=True, check=True)
@@ -259,18 +268,143 @@ def get_repo_commits_gh(gh, repo_full_name):
             continue
     return commit_list
 
+def get_commit_files(token: str, repo_full_name: str, commit_sha: str) -> list[dict]:
+    """
+    获取指定 commit 的文件变更信息
+    """
+    gh = Github(token)
+    commit_obj = request_github(
+        gh, lambda r, sha: gh.get_repo(r).get_commit(sha),
+        (repo_full_name, commit_sha),
+    )
+
+    if not commit_obj:
+        return []
+
+    file_list = []
+    for f in commit_obj.files:
+        file_list.append({
+            "filename": f.filename,
+            "status": f.status,
+            "additions": f.additions,
+            "deletions": f.deletions,
+            "changes": f.changes,
+        })
+
+    return file_list
+
+def update_repo_commits(token: str, repo_full_name: str, since: str, until: str) -> list[dict]:
+    """
+    用rest api获取指定仓库的commit信息
+    """
+    gh = Github(token)
+    owner, name = repo_full_name.split("/")
+
+    since_dt = datetime.fromisoformat(since).replace(tzinfo=timezone.utc)
+    until_dt = datetime.fromisoformat(until).replace(tzinfo=timezone.utc)
+
+    logger.info(f"Fetching commits for repository: {repo_full_name} from {since_dt} to {until_dt}")
+    repo = request_github(
+        gh, lambda r: gh.get_repo(r),
+        (repo_full_name, )
+    )
+    if not repo:
+        return []
+
+    branches = request_github(gh, lambda: repo.get_branches())
+    try:
+        branches = list(branches)  # 将 PaginatedList 转换为普通列表
+    except GithubException as e:
+        logger.warning(f"Failed to fetch branches for repo {repo_full_name}: {e}")
+        return []
+    if not branches:
+        logger.warning(f"Cannot load branches for repo: {repo_full_name}")
+        return []
+    default_branch = repo.default_branch  # e.g., 'main' or 'master'
+    available_branch_names = {branch.name for branch in branches}
+    target_branches: set[str] = set()
+    if "develop" in available_branch_names:
+        target_branches.add("develop")
+    if default_branch in available_branch_names:
+        target_branches.add(default_branch)
+
+    # 如果没有 develop 和 default，都找最后一个 branch fallback
+    if not target_branches and branches:
+        target_branches.add(branches[0].name)
+
+    print(f"Target branches for repo {repo_full_name}: {target_branches}")
+
+    results = []
+    
+    for branch in target_branches:
+        commits = request_github(
+            gh, lambda since, until: repo.get_commits(since=since, until=until, sha=branch),
+            (since_dt, until_dt)
+        )
+
+        if not commits:
+            continue
+        try:
+            commits = list(commits)
+        except GithubException as e:
+            logger.warning(f"GitHub error when listing commits for {repo_full_name}: "
+                        f"{getattr(e, 'data', {}).get('message', str(e))}")
+            continue
+        except Exception as e:
+            logger.exception(f"Unexpected error converting commits to list for {repo_full_name}: {e}")
+            continue
+
+        # 使用多线程获取每个commit的详细信息
+        def fetch_commit_details(commit):
+            try:
+                commit_info = {
+                    'repo': repo_full_name,
+                    'sha': commit.sha,
+                    'message': commit.commit.message,
+                    'created_at': commit.commit.author.date.isoformat(),
+                    'author': commit.author.login if commit.author else None,
+                    'author_email': commit.commit.author.email if commit.commit and commit.commit.author else None,
+                    'committer': commit.committer.login if commit.committer else None,
+                }
+                try:
+                    commit_files = commit.files
+                    commit_info['files'] = [{
+                        'filename': f.filename,
+                        'status': f.status,
+                        'additions': f.additions,
+                        'deletions': f.deletions,
+                        'changes': f.changes
+                    } for f in commit_files] if commit_files else []
+                except Exception:
+                    commit_info['files'] = []
+                return commit_info
+            except Exception as e:
+                logger.error(f"Error processing commit {commit.sha} in repository {repo_full_name}: {e}")
+                return {
+                    'repo': repo_full_name,
+                    'sha': commit.sha,
+                    'error': str(e)
+                }
+        with ThreadPoolExecutor(max_workers=9) as executor:
+            future_to_commit = {executor.submit(fetch_commit_details, commit): commit for commit in commits}
+            for future in tqdm(as_completed(future_to_commit), total=len(future_to_commit), desc=f"Fetching commit details from {repo_full_name}", dynamic_ncols=True):
+                commit_info = future.result()
+                results.append(commit_info)
+
+    return results
+
 if __name__ == "__main__":
 
-    repos = None
-    with open("data/paddle_repo.json", "r", encoding="utf-8") as f:
-        repos = json.load(f)
+    # repos = None
+    # with open("data/paddle_repos.json", "r", encoding="utf-8") as f:
+    #     repos = json.load(f)
 
-    for repo in repos:
-        commits = get_repo_commits(repo['full_name'])
-        repo_owner, repo_name = repo['full_name'].split('/')
-        output_filename = f"data/paddle_commits/{repo_owner}_{repo_name}_commits.json"
-        with open(output_filename, 'w', encoding='utf-8') as f:
-            json.dump(commits, f, indent=4)
+    # for repo in tqdm(repos):
+    #     commits = get_repo_commits(repo['full_name'])
+    #     repo_owner, repo_name = repo['full_name'].split('/')
+    #     output_filename = f"data/paddle_commits/{repo_owner}_{repo_name}_commits.json"
+    #     # with open(output_filename, 'w', encoding='utf-8') as f:
+    #     #     json.dump(commits, f, indent=4)
 
     # 方法2：用github api获取
     # token = '' # 添加你的GitHub token
@@ -281,3 +415,8 @@ if __name__ == "__main__":
     #     output_filename = f"data/paddle_commits/{repo_owner}_{repo_name}_commits.json"
     #     with open(output_filename, 'w', encoding='utf-8') as f:
     #         json.dump(commits, f, indent=4)
+
+    # 更新指定repo的commit
+    res = update_repo_commits(token_list[0], "PaddlePaddle/Paddle", "2025-10-03", "2025-10-11")
+    with open("cache/test_commits.json", "w", newline="", encoding="utf-8") as f:
+        json.dump(res, f, indent=4, ensure_ascii=False)

@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 import logging
 
-NOWDATE = datetime(2025, 6, 30, tzinfo=timezone.utc)
+from utils.manage_data_update_time import get_now_date
 
 def user_commits_in_repo(username, repo_full_name):
     """
@@ -19,12 +19,13 @@ def user_commits_in_repo(username, repo_full_name):
         logger.error(f"Error fetching commits for {repo_full_name}: {e}")
         return commit_list
     
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for commit in commits:
         try:
             commit_time = datetime.fromisoformat(commit['created_at'])
         except ValueError:
             continue
-        if commit_time > NOWDATE:
+        if commit_time > nowdate:
             continue
         if commit['author'] == username:
             commit_list.append(commit)
@@ -43,12 +44,14 @@ def user_prs_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching prs for {repo_full_name}: {e}")
         return pr_list
+    
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for pr in prs:
         try:
             pr_time = datetime.fromisoformat(pr['created_at'])
         except ValueError:
             continue
-        if pr_time > NOWDATE:
+        if pr_time > nowdate:
             continue
         if pr['user'] == username:
             pr_list.append(pr)
@@ -67,6 +70,8 @@ def user_issues_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching issues for {repo_full_name}: {e}")
         return issue_list
+    
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for issue in issues:
         if 'error' in issue: # 可能会有deleted issue
             continue
@@ -74,7 +79,7 @@ def user_issues_in_repo(username, repo_full_name):
             issue_time = datetime.fromisoformat(issue['created_at'])
         except ValueError:
             continue
-        if issue_time > NOWDATE:
+        if issue_time > nowdate:
             continue
         if issue['user'] == username:
             issue_list.append(issue)
@@ -114,12 +119,14 @@ def user_review_prs_in_repo(username, repo_full_name):
     except Exception as e:
         logger.error(f"Error fetching prs for {repo_full_name}: {e}")
         return review_pr_list
+
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     for pr in prs:
         try:
             pr_time = datetime.fromisoformat(pr['created_at'])
         except ValueError:
             continue
-        if pr_time > NOWDATE:
+        if pr_time > nowdate:
             continue
         if 'review_by' not in pr or pr['review_by'] == None:
             continue
@@ -136,6 +143,7 @@ def user_comment_prs_issues_in_repo(username, repo_full_name):
     # logger.info(f"Fetching comments for {username} in repository {repo_full_name}")
     repo_owner, repo_name = repo_full_name.split('/')
 
+    nowdate = datetime.fromisoformat(get_now_date()).replace(tzinfo=timezone.utc)
     comment_prs_issues_list = []
     # pr评论
     try:
@@ -146,7 +154,7 @@ def user_comment_prs_issues_in_repo(username, repo_full_name):
                 pr_time = datetime.fromisoformat(pr['created_at'])
             except ValueError:
                 continue
-            if pr_time > NOWDATE:
+            if pr_time > nowdate:
                 continue
             if 'comment_by' in pr and pr['comment_by']:
                 for comment in pr['comment_by']:
@@ -166,7 +174,7 @@ def user_comment_prs_issues_in_repo(username, repo_full_name):
                 issue_time = datetime.fromisoformat(issue['created_at'])
             except ValueError:
                 continue
-            if issue_time > NOWDATE:
+            if issue_time > nowdate:
                 continue
             if issue['comment_by']:
                 for comment in issue['comment_by']:
