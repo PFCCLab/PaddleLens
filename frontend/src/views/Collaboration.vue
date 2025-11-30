@@ -96,7 +96,7 @@
             <h5 class="mt-4">PR响应时间</h5>
           </div>
           <div class="m-2 indent-text">
-            <small class="text-muted">该时间段内该PR第一个审查或评论的时间的中位数。</small>
+            <small class="text-muted">该时间段内该PR第一个审查或评论时间的中位数。</small>
           </div>
           <div class="card m-3 border-0" style="background-color: #EBEBEB;">
             <div class="card-body text-center">
@@ -116,7 +116,7 @@
             <h5 class="mt-4">PR关闭时间</h5>
           </div>
           <div class="m-2 indent-text">
-            <small class="text-muted">该时间段内PR被关闭或合并的时间的中位数。</small>
+            <small class="text-muted">该时间段内PR被关闭或合并时间的中位数。</small>
           </div>
           <div class="card m-3 border-0" style="background-color: #EBEBEB;">
             <div class="card-body text-center">
@@ -136,7 +136,7 @@
             <h5 class="mt-4">Issue响应时间</h5>
           </div>
           <div class="m-2 indent-text">
-            <small class="text-muted">该时间段内社区对issue第一次评论的时间的中位数。</small>
+            <small class="text-muted">该时间段内社区对issue第一次评论时间的中位数。</small>
           </div>
           <div class="card m-3 border-0" style="background-color: #EBEBEB;">
             <div class="card-body text-center">

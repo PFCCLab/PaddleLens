@@ -17,7 +17,7 @@
         <router-link to="/collaboration" class="text-decoration-none col-md-4">
           <div class="p-4 h-100 border-end text-dark text-center hover-card">
             <h4 class="mb-3">🤝 社区治理评估</h4>
-            <p class="text-muted">对开源社区治理规则的运行进行评估和打分。</p>
+            <p class="text-muted">基于github项目数据度量开源社区治理规则及成效。</p>
           </div>
         </router-link>
 
